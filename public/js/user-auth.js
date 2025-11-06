@@ -8,6 +8,7 @@ class UserAuth {
   init() {
     this.checkAuthState();
     this.bindEvents();
+    this.maybeShowLoginPrompt();
   }
 
   // Check if user is logged in (from localStorage, sessionStorage, or Firebase)
@@ -111,6 +112,11 @@ class UserAuth {
     flightSearchElements.forEach(selector => {
       const elements = document.querySelectorAll(selector);
       elements.forEach(element => {
+        // Skip elements that live inside the login modal; those need to submit normally
+        if (element.closest('#loginModal')) {
+          return;
+        }
+
         element.addEventListener('click', (e) => {
           if (!this.isLoggedIn()) {
             e.preventDefault();
@@ -177,8 +183,6 @@ class UserAuth {
 
       // Clear form
       document.getElementById('loginForm').reset();
-
-      alert('¡Bienvenido! Has iniciado sesión correctamente.');
     }, 1500);
   }
 
@@ -211,19 +215,27 @@ class UserAuth {
 
   // Logout user
   logout() {
-    if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
-      // Clear user data
-      localStorage.removeItem('mundi_user');
-      this.user = null;
-      
-      // Show login button
-      this.showLoginButton();
-      
-      // Optional: Redirect to home page
-      // window.location.href = 'index.html';
-      
-      console.log('Usuario cerró sesión');
+    if (!confirm('¿Estás seguro de que quieres cerrar sesión?')) return;
+    if (window.mundiAuth?.signOut) {
+      window.mundiAuth.signOut().catch(() => {});
     }
+    this.finishLogout('logout');
+  }
+
+  finishLogout(reason) {
+    this.clearLocalSession();
+    this.redirectToLogin(reason);
+    console.log('Usuario cerró sesión');
+  }
+
+  clearLocalSession() {
+    localStorage.removeItem('mundi_user');
+    this.user = null;
+    this.showLoginButton();
+    const userName = document.getElementById('userName');
+    if (userName) userName.textContent = 'Usuario';
+    const loginButtonText = document.getElementById('loginButtonText');
+    if (loginButtonText) loginButtonText.textContent = 'Regístrate aquí';
   }
 
   // Method to set user data (call this when user logs in)
@@ -231,6 +243,7 @@ class UserAuth {
     this.user = userData;
     localStorage.setItem('mundi_user', JSON.stringify(userData));
     this.showUserMenu();
+    this.closeLoginModal();
   }
 
   // Method to get current user
@@ -241,6 +254,49 @@ class UserAuth {
   // Method to check if user is logged in
   isLoggedIn() {
     return this.user !== null;
+  }
+
+  closeLoginModal() {
+    const el = document.getElementById('loginModal');
+    if (!el || typeof bootstrap === 'undefined') return;
+    const modal = bootstrap.Modal.getOrCreateInstance(el);
+    modal.hide();
+  }
+
+  maybeShowLoginPrompt() {
+    if (this.isLoggedIn() || !this.isIndexPage()) return;
+    let params;
+    try {
+      params = new URLSearchParams(window.location.search || '');
+    } catch (e) {
+      return;
+    }
+    if (!params.has('promptLogin')) return;
+    this.showLoginModal();
+    if (history.replaceState) {
+      params.delete('promptLogin');
+      const qs = params.toString();
+      const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
+      history.replaceState(null, '', newUrl);
+    }
+  }
+
+  redirectToLogin(reason) {
+    if (this.isIndexPage()) {
+      this.showLoginModal();
+      return;
+    }
+    const tag = reason ? encodeURIComponent(reason) : '1';
+    window.location.href = `index.html?promptLogin=${tag}`;
+  }
+
+  isIndexPage() {
+    const path = (window.location.pathname || '').toLowerCase();
+    return path.endsWith('/index.html') || path === '/' || path === '';
+  }
+
+  handleExternalLogout() {
+    this.finishLogout('external');
   }
 }
 
@@ -262,7 +318,7 @@ function onFirebaseLogin(user) {
 
 // When user logs out from Firebase
 function onFirebaseLogout() {
-  window.userAuth.logout();
+  window.userAuth?.handleExternalLogout?.();
 }
 
 // Check Firebase auth state

@@ -35,19 +35,7 @@
 
   // Restrict phone field to digits only (block letters before they appear)
   const phoneInput = document.getElementById('phone');
-  if (phoneInput) {
-    const allowedKeys = new Set(['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End']);
-    phoneInput.addEventListener('keydown', (evt) => {
-      if (evt.metaKey || evt.ctrlKey || evt.altKey) return;
-      if (allowedKeys.has(evt.key)) return;
-      if (/^\d$/.test(evt.key)) return;
-      evt.preventDefault();
-    });
-    phoneInput.addEventListener('input', () => {
-      const digits = phoneInput.value.replace(/\D+/g, '');
-      if (phoneInput.value !== digits) phoneInput.value = digits;
-    });
-  }
+  if (phoneInput) registerDigitOnly(phoneInput);
 
   const alphaKeys = new Set(['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End']);
   const alphaChar = /^[A-Za-zÁÉÍÓÚáéíóúÑñ]$/;

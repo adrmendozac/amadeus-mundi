@@ -247,7 +247,7 @@
           <summary class="h5 mb-2">Escalas</summary>
           <div class="d-grid gap-2">
             <label class="form-check">
-              <input id="fDirect" class="form-check-input" type="checkbox">
+              <input id="fDirect" class="form-check-input" type="checkbox" checked>
               <span class="ms-2">Directo</span>
             </label>
             <label class="form-check">

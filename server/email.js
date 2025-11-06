@@ -4,12 +4,9 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 
-// Configure AWS SDK v3 client
 const REGION = process.env.AWS_REGION || 'us-east-1';
 const ses = new SESClient({
   region: REGION,
-  // Credentials are automatically picked from env vars in v3, this explicit block
-  // keeps local dev predictable and is ignored if not set
   credentials: (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
     ? {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -36,13 +33,45 @@ const AGENT_EMAILS = {
   'default': 'direccion@munditravels.com'
 };
 
-// Get the agent's email, fallback to default if not found
 function getAgentEmail(agentName) {
   return AGENT_EMAILS[agentName] || AGENT_EMAILS.default;
 }
 
-  // Always include this recipient
 const ALWAYS_TO = ['direccion@munditravels.com', 'donotreply@munditravels.com'];
+
+let AIRLINES_MAP = null;
+function loadAirlinesMap() {
+  if (AIRLINES_MAP) return AIRLINES_MAP;
+  try {
+    const filePath = path.join(__dirname, '..', 'public', 'assets', 'airlines.json');
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(raw);
+      AIRLINES_MAP = {};
+      if (Array.isArray(data)) {
+        data.forEach((airline) => {
+          const code = String(airline?.iata || airline?.id || airline?.code || '').toUpperCase();
+          if (!code) return;
+          AIRLINES_MAP[code] = airline?.name || code;
+        });
+      }
+    } else {
+      AIRLINES_MAP = {};
+    }
+  } catch (err) {
+    console.warn('Could not load airlines.json:', err.message);
+    AIRLINES_MAP = {};
+  }
+  return AIRLINES_MAP;
+}
+
+function airlineDisplayLabel(code) {
+  if (!code) return 'N/A';
+  const map = loadAirlinesMap();
+  const upper = String(code).toUpperCase();
+  const name = map[upper];
+  return name ? `${name} (${upper})` : upper;
+}
 
   //
 
@@ -73,7 +102,7 @@ const createEmailContent = (bookingData) => {
       <table style="width: 100%; border-collapse: collapse;">
         <tr><td style="padding: 5px; font-weight: bold; width: 30%;">Salida:</td><td style="padding: 5px;">${segment.departure.iataCode} - ${new Date(segment.departure.at).toLocaleString()}</td></tr>
         <tr><td style="padding: 5px; font-weight: bold;">Llegada:</td><td style="padding: 5px;">${segment.arrival.iataCode} - ${new Date(segment.arrival.at).toLocaleString()}</td></tr>
-        <tr><td style="padding: 5px; font-weight: bold;">Aerolínea:</td><td style="padding: 5px;">${segment.carrierCode} ${segment.number || ''}</td></tr>
+        <tr><td style="padding: 5px; font-weight: bold;">Aerolínea:</td><td style="padding: 5px;">${airlineDisplayLabel(segment.carrierCode)}${segment.number ? ` ${segment.number}` : ''}</td></tr>
       </table>
     </div>`
   ).join('');
@@ -128,7 +157,7 @@ ${flightDetails.segments.map((segment, index) =>
   `Vuelo ${index + 1}:
   - Salida: ${segment.departure.iataCode} - ${new Date(segment.departure.at).toLocaleString()}
   - Llegada: ${segment.arrival.iataCode} - ${new Date(segment.arrival.at).toLocaleString()}
-  - Aerolínea: ${segment.carrierCode} ${segment.number || ''}`
+  - Aerolínea: ${airlineDisplayLabel(segment.carrierCode)}${segment.number ? ` ${segment.number}` : ''}`
 ).join('\n\n')}
 
 💵 Precio total: ${flightDetails.price}
@@ -163,7 +192,7 @@ ${flightDetails.segments.map((segment, index) =>
           </div>
           
           <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ecf0f1;">
-            <p style="color: #7f8c8d; margin: 0;">¡Gracias por tu reserva con <strong style="color: #2c3e50;">Mundi Travels</strong>!</p>
+            <p style="color: #7f8c8d; margin: 0;">¡Gracias por tu cotizacion con <strong style="color: #2c3e50;">Mundi Travels</strong>!</p>
             <p style="color: #95a5a6; margin: 10px 0 0 0; font-size: 14px;">Nuestro equipo se pondrá en contacto contigo pronto.</p>
           </div>
         </div>
@@ -188,7 +217,12 @@ router.post('/send-booking-email', async (req, res) => {
 
     // Validate email addresses
     const agentEmail = getAgentEmail(bookingData.contactInfo.agent);
-    const toAddresses = Array.from(new Set([agentEmail, ALWAYS_TO].filter(Boolean)));
+    const rawRecipientList = [
+      agentEmail,
+      ...ALWAYS_TO,
+      bookingData.contactInfo?.email?.trim()
+    ];
+    const toAddresses = Array.from(new Set(rawRecipientList.filter(Boolean)));
     
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

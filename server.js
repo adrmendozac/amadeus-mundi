@@ -2,10 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
+const emailRouter = require('./server/email');
 const app = express();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api', emailRouter);
 
 const { AMAD_CLIENT_ID, AMAD_CLIENT_SECRET } = process.env;
 
@@ -15,7 +17,7 @@ let tokenExpiry = 0;
 async function getAccessToken() {
   if (token && Date.now() < tokenExpiry) return token;
   const response = await axios.post(
-    'https://test.api.amadeus.com/v1/security/oauth2/token',
+    'https://api.amadeus.com/v1/security/oauth2/token',
     new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: AMAD_CLIENT_ID,
@@ -27,6 +29,21 @@ async function getAccessToken() {
   tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000; // refresh 1 min early
   return token;
 }
+
+// Temporary hold endpoint until Amadeus booking is implemented
+app.post('/api/hold', (req, res) => {
+  try {
+    console.log('📦 Hold request received', req.body);
+    res.json({
+      success: true,
+      message: 'Hold placeholder created successfully.',
+      received: req.body
+    });
+  } catch (err) {
+    console.error('Hold endpoint error:', err);
+    res.status(500).json({ error: 'Failed to create hold' });
+  }
+});
 
 // Flight search endpoint
 app.post('/api/search', async (req, res) => {
@@ -44,7 +61,7 @@ app.post('/api/search', async (req, res) => {
     if (returnDate) params.append('returnDate', returnDate);
 
     const flightRes = await axios.get(
-      `https://test.api.amadeus.com/v2/shopping/flight-offers?${params.toString()}`,
+      `https://api.amadeus.com/v2/shopping/flight-offers?${params.toString()}`,
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
@@ -64,7 +81,7 @@ app.get('/api/autocomplete', async (req, res) => {
   try {
     const authToken = await getAccessToken();
     const response = await axios.get(
-      'https://test.api.amadeus.com/v1/reference-data/locations',
+      'https://api.amadeus.com/v1/reference-data/locations',
       {
         headers: { Authorization: `Bearer ${authToken}` },
         params: { keyword, subType: 'AIRPORT,CITY', 'page[limit]': 5 }
