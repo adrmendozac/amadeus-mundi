@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+const { redis, connect: connectRedis } = require('./server/redisClient');
+
+(async () => {
+  await connectRedis();
+  app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));
+})();
+
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
@@ -10,6 +18,34 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', emailRouter);
 
 const { AMAD_CLIENT_ID, AMAD_CLIENT_SECRET } = process.env;
+
+const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+
+app.use(cookieParser());
+app.use(session({
+  secret: 'replace_with_a_long_random_secret_key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: true,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000
+  }
+}));
+
+async function getAccessToken() {
+  const cached = await redis.get('amadeus_token');
+  if (cached) return cached;
+
+  await redis.set('amadeus_token', token, 'EX', response.data.expires_in - 60);
+  return token;
+}
+
+
+
 
 let token = null;
 let tokenExpiry = 0;
