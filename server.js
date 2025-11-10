@@ -1,57 +1,69 @@
 require('dotenv').config();
 
-const { redis, connect: connectRedis } = require('./server/redisClient');
-
-(async () => {
-  await connectRedis();
-  app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));
-})();
-
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
-const emailRouter = require('./server/email');
-const app = express();
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/api', emailRouter);
-
-const { AMAD_CLIENT_ID, AMAD_CLIENT_SECRET } = process.env;
-
-const express = require('express');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
+const emailRouter = require('./server/email');
+const { redis, connect: connectRedis, isConfigured: isRedisConfigured } = require('./server/redisClient');
 
+const app = express();
+
+const { AMAD_CLIENT_ID, AMAD_CLIENT_SECRET, NODE_ENV } = process.env;
+
+app.use(express.json());
 app.use(cookieParser());
 app.use(session({
-  secret: 'replace_with_a_long_random_secret_key',
+  secret: process.env.SESSION_SECRET || 'dev-session-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true,
+    secure: NODE_ENV === 'production',
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api', emailRouter);
 
-async function getAccessToken() {
-  const cached = await redis.get('amadeus_token');
-  if (cached) return cached;
+let inMemoryToken = null;
+let inMemoryExpiry = 0;
+let redisReady = false;
 
-  await redis.set('amadeus_token', token, 'EX', response.data.expires_in - 60);
-  return token;
+async function readCachedToken() {
+  if (!redisReady || !redis) return null;
+  try {
+    return await redis.get('amadeus_token');
+  } catch (err) {
+    console.warn('Redis read failed, disabling Redis cache:', err.message);
+    redisReady = false;
+    return null;
+  }
 }
 
-
-
-
-let token = null;
-let tokenExpiry = 0;
+async function writeCachedToken(token, ttl) {
+  if (!redisReady || !redis) return;
+  try {
+    await redis.set('amadeus_token', token, 'EX', ttl);
+  } catch (err) {
+    console.warn('Redis write failed, disabling Redis cache:', err.message);
+    redisReady = false;
+  }
+}
 
 async function getAccessToken() {
-  if (token && Date.now() < tokenExpiry) return token;
+  if (inMemoryToken && Date.now() < inMemoryExpiry) return inMemoryToken;
+
+  const cached = await readCachedToken();
+  if (cached) {
+    inMemoryToken = cached;
+    // Set a short-lived in-memory TTL so we re-check Redis regularly
+    inMemoryExpiry = Date.now() + 5 * 60 * 1000;
+    return cached;
+  }
+
   const response = await axios.post(
     'https://api.amadeus.com/v1/security/oauth2/token',
     new URLSearchParams({
@@ -61,8 +73,12 @@ async function getAccessToken() {
     }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
-  token = response.data.access_token;
-  tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000; // refresh 1 min early
+
+  const token = response.data.access_token;
+  const ttl = Math.max(response.data.expires_in - 60, 60);
+  inMemoryToken = token;
+  inMemoryExpiry = Date.now() + ttl * 1000;
+  await writeCachedToken(token, ttl);
   return token;
 }
 
@@ -108,7 +124,6 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
-// server.js
 app.get('/api/autocomplete', async (req, res) => {
   const { keyword } = req.query;
   if (!keyword || keyword.length < 2) {
@@ -132,6 +147,25 @@ app.get('/api/autocomplete', async (req, res) => {
 
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
-});
+
+async function startServer() {
+  if (isRedisConfigured) {
+    try {
+      await connectRedis();
+      redisReady = true;
+    } catch (err) {
+      console.warn(`⚠️ Redis connection failed (${err.message}). Continuing with in-memory cache.`);
+      if (redis && typeof redis.disconnect === 'function') {
+        redis.disconnect();
+      }
+    }
+  } else {
+    console.log('ℹ️ No REDIS_URL provided. Using in-memory token cache only.');
+  }
+
+  app.listen(PORT, () => {
+    console.log(`✅ Server running at http://localhost:${PORT}`);
+  });
+}
+
+startServer();
