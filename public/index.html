@@ -49,8 +49,6 @@
                      <i class="ti ti-shield-half"></i>
                   </div>
                   <div>
-                     <h4>Safety First Always</h4>
-                     <p class="mb-0">We believe in the power of travel As avid explorer.</p>
                   </div>
                </div>
 
@@ -60,8 +58,6 @@
                      <i class="ti ti-world-star"></i>
                   </div>
                   <div>
-                     <h4>Experience the World</h4>
-                     <p class="mb-0">We believe in the power of travel As avid explorer.</p>
                   </div>
                </div>
 
@@ -70,10 +66,6 @@
                   <div class="icon text-success">
                      <i class="ti ti-capture"></i>
                   </div>
-                  <div>
-                     <h4>Excellence in Service</h4>
-                     <p class="mb-0">We believe in the power of travel As avid explorer.</p>
-                  </div>
                </div>
 
                <!-- Single Item -->
@@ -81,13 +73,9 @@
                   <div class="icon text-success">
                      <i class="ti ti-user"></i>
                   </div>
-                  <div>
-                     <h4>Friendly Guider</h4>
-                     <p class="mb-0">We believe in the power of travel As avid explorer.</p>
-                  </div>
+
                </div>
 
-               <a href="about-us.html" class="btn btn-success">Book Now <i class="icon-arrow-right"></i></a>
             </div>
          </div>
       </div>
@@ -720,7 +708,8 @@
     signInWithEmailAndPassword,
     signOut,
     GoogleAuthProvider,
-    signInWithPopup
+    signInWithRedirect,
+    getRedirectResult
   } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
 
   // Your config
@@ -771,17 +760,24 @@
     });
   }
 
-  // 4) Optional Google sign-in if you add a button with id="googleSignIn"
+  // 4) Optional Google sign-in (redirect flow to avoid third-party cookie blockers)
   const googleBtn = document.getElementById('googleSignIn');
   if (googleBtn) {
     googleBtn.addEventListener('click', async () => {
       try {
-        await signInWithPopup(auth, new GoogleAuthProvider());
+        await signInWithRedirect(auth, new GoogleAuthProvider());
       } catch (err) {
+        console.error('Google Sign-In redirect failed', err);
         alert('Google sign-in failed: ' + (err?.message || err));
       }
     });
   }
+
+  // Handle redirect result when user returns from Google
+  getRedirectResult(auth).catch((err) => {
+    console.error('Google redirect result error', err);
+    alert('Google sign-in failed: ' + (err?.message || err));
+  });
 
   // 5) Optional logout hook if you add a button with id="logoutBtn"
   const logoutBtn = document.getElementById('logoutBtn');
