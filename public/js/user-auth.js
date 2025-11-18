@@ -11,19 +11,24 @@ class UserAuth {
     this.maybeShowLoginPrompt();
   }
 
-  // Check if user is logged in (from localStorage, sessionStorage, or Firebase)
+  // Check if user is logged in (from storage or Firebase)
   checkAuthState() {
-    // Check localStorage for user data
-    const userData = localStorage.getItem('mundi_user');
-    if (userData) {
-      try {
-        this.user = JSON.parse(userData);
-        this.showUserMenu();
-      } catch (e) {
-        console.error('Error parsing user data:', e);
-        this.showLoginButton();
-      }
-    } else {
+    // Prefer sessionStorage when "remember me" is false, otherwise localStorage
+    const shouldRemember = localStorage.getItem('mundi_remember') === 'true';
+    const stored =
+      (shouldRemember ? localStorage : sessionStorage).getItem('mundi_user') ||
+      (!shouldRemember ? localStorage.getItem('mundi_user') : null); // fallback for legacy data
+
+    if (!stored) {
+      this.showLoginButton();
+      return;
+    }
+
+    try {
+      this.user = JSON.parse(stored);
+      this.showUserMenu();
+    } catch (e) {
+      console.error('Error parsing user data:', e);
       this.showLoginButton();
     }
   }
@@ -165,6 +170,7 @@ class UserAuth {
     // Simulate login (replace with Firebase Auth)
     setTimeout(() => {
       // For demo purposes, accept any email/password
+      localStorage.setItem('mundi_remember', rememberMe ? 'true' : 'false');
       const userData = {
         uid: 'user_' + Date.now(),
         email: email,
@@ -229,7 +235,9 @@ class UserAuth {
   }
 
   clearLocalSession() {
+    sessionStorage.removeItem('mundi_user');
     localStorage.removeItem('mundi_user');
+    localStorage.removeItem('mundi_remember');
     this.user = null;
     this.showLoginButton();
     const userName = document.getElementById('userName');
@@ -241,7 +249,15 @@ class UserAuth {
   // Method to set user data (call this when user logs in)
   setUser(userData) {
     this.user = userData;
-    localStorage.setItem('mundi_user', JSON.stringify(userData));
+    const shouldRemember = localStorage.getItem('mundi_remember') === 'true';
+    const targetStorage = shouldRemember ? localStorage : sessionStorage;
+    targetStorage.setItem('mundi_user', JSON.stringify(userData));
+    // Keep the other storage clean to avoid stale sessions
+    if (shouldRemember) {
+      sessionStorage.removeItem('mundi_user');
+    } else {
+      localStorage.removeItem('mundi_user');
+    }
     this.showUserMenu();
     this.closeLoginModal();
   }

@@ -24,7 +24,7 @@
 
 <body>
 
-<a href="https://api.whatsapp.com/send?phone=19253398990" class="float" target="_blank">
+<a href="https://api.whatsapp.com/send?phone=19255659831" class="float" target="_blank">
 <i class="fa fa-whatsapp my-float"></i>
 </a>
 
@@ -704,6 +704,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
   import {
     getAuth,
+    setPersistence,
+    browserLocalPersistence,
+    browserSessionPersistence,
     onAuthStateChanged,
     signInWithEmailAndPassword,
     signOut,
@@ -738,7 +741,7 @@
       };
       window.userAuth?.setUser?.(userData);
     } else {
-      window.userAuth?.handleFirebaseLogout?.();
+      window.userAuth?.handleExternalLogout?.();
     }
   });
 
@@ -749,9 +752,13 @@
       e.preventDefault();
       const email = document.getElementById('loginEmail')?.value?.trim();
       const password = document.getElementById('loginPassword')?.value;
+      const rememberMe = document.getElementById('rememberMe')?.checked;
       if (!email || !password) return alert('Por favor completa todos los campos');
 
       try {
+        // Set session persistence based on "recordarme"
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+        localStorage.setItem('mundi_remember', rememberMe ? 'true' : 'false');
         await signInWithEmailAndPassword(auth, email, password);
         // onAuthStateChanged will update UI, your Bootstrap modal code will handle closing
       } catch (err) {
